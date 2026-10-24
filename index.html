@@ -1,0 +1,1494 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>auditline — find the attack in your logs</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0b1220;
+    --bg-raise: #0e1626;
+    --panel: #121b2e;
+    --panel-2: #0f1728;
+    --border: #223050;
+    --border-soft: #1a253d;
+    --text: #e7ecf5;
+    --text-dim: #93a1be;
+    --text-faint: #5c6b85;
+    --accent: #f2a93b;
+    --accent-dim: #b9812c;
+    --high: #e5484d;
+    --medium: #f2a93b;
+    --low: #4faf6d;
+    --mono-bg: #0a0f1c;
+    --font-ui: 'Space Grotesk', system-ui, sans-serif;
+    --font-mono: 'JetBrains Mono', 'SF Mono', Consolas, monospace;
+  }
+
+  * { box-sizing: border-box; }
+
+  html { scroll-behavior: smooth; }
+
+  body {
+    margin: 0;
+    background: var(--bg);
+    background-image:
+      radial-gradient(ellipse 900px 500px at 15% -10%, rgba(242,169,59,0.08), transparent 60%),
+      radial-gradient(ellipse 700px 500px at 100% 10%, rgba(79,175,109,0.05), transparent 60%);
+    color: var(--text);
+    font-family: var(--font-ui);
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  a { color: inherit; }
+
+  ::selection { background: rgba(242,169,59,0.35); }
+
+  .wrap {
+    max-width: 1180px;
+    margin: 0 auto;
+    padding: 0 28px;
+  }
+
+  /* ---------- Header ---------- */
+
+  header.site {
+    padding: 26px 0 10px;
+  }
+  header.site .wrap {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .wordmark {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    font-weight: 700;
+    font-size: 1.15rem;
+    letter-spacing: -0.01em;
+  }
+  .wordmark .dot { color: var(--accent); }
+  .wordmark small {
+    font-family: var(--font-mono);
+    font-weight: 400;
+    font-size: 0.68rem;
+    color: var(--text-faint);
+    letter-spacing: 0.02em;
+  }
+  nav.site-nav {
+    display: flex;
+    gap: 26px;
+    font-size: 0.88rem;
+    color: var(--text-dim);
+  }
+  nav.site-nav a { text-decoration: none; }
+  nav.site-nav a:hover { color: var(--text); }
+
+  /* ---------- Hero ---------- */
+
+  .hero {
+    padding: 46px 0 30px;
+  }
+  .hero-intro {
+    max-width: 640px;
+    margin-bottom: 34px;
+  }
+  .hero-intro h1 {
+    font-size: clamp(2rem, 4vw, 2.7rem);
+    line-height: 1.12;
+    letter-spacing: -0.02em;
+    margin: 0 0 14px;
+  }
+  .hero-intro p {
+    color: var(--text-dim);
+    font-size: 1.05rem;
+    margin: 0;
+    max-width: 54ch;
+  }
+  .hero-intro .privacy-note {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 18px;
+    font-family: var(--font-mono);
+    font-size: 0.76rem;
+    color: var(--low);
+    background: rgba(79,175,109,0.08);
+    border: 1px solid rgba(79,175,109,0.25);
+    padding: 6px 12px 6px 10px;
+    border-radius: 3px;
+  }
+  .hero-intro .privacy-note .led {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: var(--low);
+    box-shadow: 0 0 6px var(--low);
+    flex-shrink: 0;
+  }
+
+  /* ---------- Console ---------- */
+
+  .console {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    overflow: hidden;
+    background: var(--mono-bg);
+    box-shadow: 0 30px 80px -30px rgba(0,0,0,0.6);
+  }
+  @media (max-width: 880px) {
+    .console { grid-template-columns: 1fr; }
+  }
+
+  .pane {
+    display: flex;
+    flex-direction: column;
+    min-height: 460px;
+  }
+  .pane + .pane {
+    border-left: 1px solid var(--border);
+  }
+  @media (max-width: 880px) {
+    .pane + .pane { border-left: none; border-top: 1px solid var(--border); }
+  }
+
+  .pane-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 16px;
+    background: var(--panel);
+    border-bottom: 1px solid var(--border-soft);
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    color: var(--text-faint);
+  }
+  .pane-bar .label { color: var(--text-dim); }
+  .pane-bar .traffic { display: flex; gap: 6px; }
+  .pane-bar .traffic span {
+    width: 9px; height: 9px; border-radius: 50%;
+    background: #2a3a5c;
+  }
+
+  .line-count {
+    font-family: var(--font-mono);
+    font-size: 0.68rem;
+    color: var(--text-faint);
+  }
+
+  .toolbar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--border-soft);
+    background: var(--panel);
+    flex-wrap: wrap;
+  }
+  .toolbar-divider {
+    width: 1px;
+    height: 16px;
+    background: var(--border);
+    margin: 0 2px;
+  }
+  .ghost-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text-dim);
+    padding: 4px 9px;
+    border-radius: 3px;
+    cursor: pointer;
+  }
+  .ghost-btn:hover { color: var(--text); border-color: var(--accent-dim); }
+  .ghost-btn-quiet {
+    margin-left: auto;
+    border-color: transparent;
+    color: var(--text-faint);
+  }
+  .ghost-btn-quiet:hover { color: var(--high); border-color: rgba(229,72,77,0.35); }
+
+  .textarea-wrap {
+    position: relative;
+    flex: 1;
+    display: flex;
+  }
+
+  textarea#logInput {
+    flex: 1;
+    width: 100%;
+    resize: none;
+    border: none;
+    background: transparent;
+    color: var(--text);
+    font-family: var(--font-mono);
+    font-size: 0.78rem;
+    line-height: 1.6;
+    padding: 16px;
+    outline: none;
+  }
+  textarea#logInput::placeholder { color: var(--text-faint); }
+
+  .drop-overlay {
+    position: absolute;
+    inset: 6px;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    background: rgba(242,169,59,0.07);
+    border: 1.5px dashed var(--accent-dim);
+    border-radius: 5px;
+    font-family: var(--font-mono);
+    font-size: 0.82rem;
+    color: var(--accent);
+    pointer-events: none;
+  }
+  .textarea-wrap.dragover .drop-overlay { display: flex; }
+
+  .format-hint {
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    line-height: 1.5;
+    color: var(--medium);
+    background: rgba(242,169,59,0.07);
+    border-top: 1px solid var(--border-soft);
+    padding: 10px 16px;
+  }
+
+  .input-footer {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 16px;
+    border-top: 1px solid var(--border-soft);
+    background: var(--panel);
+  }
+  .type-badge {
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    color: var(--text-faint);
+  }
+  .type-badge b { color: var(--text-dim); }
+  .kbd-hint {
+    font-family: var(--font-mono);
+    font-size: 0.66rem;
+    color: var(--text-faint);
+    margin-right: auto;
+  }
+  @media (max-width: 520px) {
+    .kbd-hint { display: none; }
+  }
+
+  button#analyzeBtn {
+    font-family: var(--font-ui);
+    font-weight: 600;
+    font-size: 0.86rem;
+    background: var(--accent);
+    color: #1a1204;
+    border: none;
+    padding: 9px 18px;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: transform 0.08s ease, background 0.15s ease;
+  }
+  button#analyzeBtn:hover { background: #ffbd54; }
+  button#analyzeBtn:active { transform: scale(0.98); }
+  button#analyzeBtn:disabled { background: #3a3222; color: var(--text-faint); cursor: default; }
+
+  /* ---------- Output pane ---------- */
+
+  #output {
+    flex: 1;
+    padding: 16px;
+    font-family: var(--font-mono);
+    font-size: 0.78rem;
+    overflow-y: auto;
+    max-height: 460px;
+  }
+  .placeholder {
+    color: var(--text-faint);
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+    padding-top: 6px;
+  }
+  .placeholder .caret::after {
+    content: '▍';
+    color: var(--accent);
+    animation: blink 1s steps(1) infinite;
+  }
+  @keyframes blink { 50% { opacity: 0; } }
+
+  .summary-row {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 16px;
+  }
+  .sum-chip {
+    flex: 1;
+    text-align: center;
+    padding: 8px 4px;
+    border-radius: 4px;
+    font-weight: 600;
+    font-size: 0.85rem;
+  }
+  .sum-chip small {
+    display: block;
+    font-weight: 400;
+    font-size: 0.62rem;
+    letter-spacing: 0.03em;
+    opacity: 0.85;
+    margin-top: 2px;
+  }
+  .sum-chip.high { background: rgba(229,72,77,0.14); color: var(--high); border: 1px solid rgba(229,72,77,0.35); }
+  .sum-chip.medium { background: rgba(242,169,59,0.14); color: var(--medium); border: 1px solid rgba(242,169,59,0.35); }
+  .sum-chip.low { background: rgba(79,175,109,0.14); color: var(--low); border: 1px solid rgba(79,175,109,0.35); }
+
+  .finding {
+    border-left: 2px solid var(--border);
+    padding: 4px 0 14px 12px;
+    margin-bottom: 8px;
+  }
+  .finding.sev-high { border-left-color: var(--high); }
+  .finding.sev-medium { border-left-color: var(--medium); }
+  .finding.sev-low { border-left-color: var(--low); }
+
+  .finding .fhead {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 4px;
+  }
+  .sev-tag {
+    font-size: 0.62rem;
+    font-weight: 600;
+    padding: 1px 6px;
+    border-radius: 2px;
+    letter-spacing: 0.02em;
+  }
+  .sev-tag.high { background: var(--high); color: #2a0505; }
+  .sev-tag.medium { background: var(--medium); color: #2a1c04; }
+  .sev-tag.low { background: var(--low); color: #05230f; }
+
+  .finding .fcat { color: var(--text); font-weight: 600; }
+  .finding .fdesc { color: var(--text-dim); margin: 0 0 6px; }
+  .finding .fevidence {
+    background: var(--panel-2);
+    border: 1px solid var(--border-soft);
+    border-radius: 3px;
+    padding: 6px 10px;
+    color: var(--text-faint);
+    font-size: 0.72rem;
+  }
+  .finding .fevidence div { white-space: pre; overflow-x: auto; padding: 1px 0; }
+
+  .clean-msg {
+    color: var(--low);
+    padding: 6px 0;
+  }
+
+  .evidence-toggle {
+    display: inline-block;
+    margin-top: 6px;
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    color: var(--accent);
+    background: none;
+    border: none;
+    padding: 0;
+    cursor: pointer;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+
+  .output-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 10px 16px;
+    border-top: 1px solid var(--border-soft);
+    background: var(--panel);
+  }
+  .output-footer #resultMeta {
+    font-family: var(--font-mono);
+    font-size: 0.68rem;
+    color: var(--text-faint);
+  }
+
+  .toast {
+    position: fixed;
+    bottom: 24px;
+    left: 50%;
+    transform: translateX(-50%) translateY(8px);
+    background: var(--panel);
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-family: var(--font-mono);
+    font-size: 0.78rem;
+    padding: 9px 16px;
+    border-radius: 5px;
+    box-shadow: 0 12px 30px -8px rgba(0,0,0,0.5);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.18s ease, transform 0.18s ease;
+    z-index: 50;
+  }
+  .toast.show {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+
+  /* ---------- What it catches ---------- */
+
+  .section {
+    padding: 76px 0;
+    border-top: 1px solid var(--border-soft);
+  }
+  .section-head {
+    max-width: 560px;
+    margin-bottom: 40px;
+  }
+  .section-head h2 {
+    font-size: 1.65rem;
+    letter-spacing: -0.01em;
+    margin: 0 0 10px;
+  }
+  .section-head p {
+    color: var(--text-dim);
+    margin: 0;
+  }
+
+  .catches-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 1px;
+    background: var(--border-soft);
+    border: 1px solid var(--border-soft);
+    border-radius: 6px;
+    overflow: hidden;
+  }
+  @media (max-width: 880px) {
+    .catches-grid { grid-template-columns: repeat(2, 1fr); }
+  }
+  @media (max-width: 560px) {
+    .catches-grid { grid-template-columns: 1fr; }
+  }
+  .catch-card {
+    background: var(--panel);
+    padding: 22px 20px;
+  }
+  .catch-card .ctitle {
+    font-weight: 600;
+    margin-bottom: 6px;
+    font-size: 0.95rem;
+  }
+  .catch-card .cdesc {
+    color: var(--text-dim);
+    font-size: 0.86rem;
+    margin-bottom: 12px;
+  }
+  .catch-card .cexample {
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    color: var(--text-faint);
+    background: var(--mono-bg);
+    border: 1px solid var(--border-soft);
+    padding: 6px 8px;
+    border-radius: 3px;
+    overflow-x: auto;
+    white-space: pre;
+  }
+  .catch-card .ctitle .swatch {
+    display: inline-block;
+    width: 7px; height: 7px; border-radius: 50%;
+    margin-right: 7px;
+  }
+  .catch-card .ctitle .tier-tag {
+    display: inline-block;
+    font-family: var(--font-mono);
+    font-weight: 400;
+    font-size: 0.6rem;
+    color: var(--text-faint);
+    background: var(--mono-bg);
+    border: 1px solid var(--border-soft);
+    padding: 1px 6px;
+    border-radius: 3px;
+    margin-left: 6px;
+    vertical-align: middle;
+    letter-spacing: 0.01em;
+  }
+
+  /* ---------- Pipeline ---------- */
+
+  .pipeline {
+    display: flex;
+    gap: 0;
+    counter-reset: step;
+  }
+  @media (max-width: 760px) {
+    .pipeline { flex-direction: column; }
+  }
+  .pipe-step {
+    flex: 1;
+    position: relative;
+    padding: 0 24px 0 0;
+    counter-increment: step;
+  }
+  .pipe-step:not(:last-child)::after {
+    content: '';
+    position: absolute;
+    top: 15px;
+    right: 0;
+    width: 24px;
+    height: 1px;
+    background: var(--border);
+  }
+  @media (max-width: 760px) {
+    .pipe-step:not(:last-child)::after { display: none; }
+    .pipe-step { padding: 0 0 28px; }
+  }
+  .pipe-step .pnum {
+    font-family: var(--font-mono);
+    color: var(--accent);
+    font-size: 0.78rem;
+    margin-bottom: 10px;
+  }
+  .pipe-step .pnum::before {
+    content: counter(step, decimal-leading-zero);
+  }
+  .pipe-step h3 {
+    font-size: 1.02rem;
+    margin: 0 0 8px;
+  }
+  .pipe-step p {
+    color: var(--text-dim);
+    font-size: 0.88rem;
+    margin: 0;
+  }
+
+  /* ---------- Footer ---------- */
+
+  footer.site {
+    padding: 40px 0 60px;
+    border-top: 1px solid var(--border-soft);
+    color: var(--text-faint);
+    font-size: 0.85rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 14px;
+  }
+  footer.site a { text-decoration: underline; text-underline-offset: 3px; color: var(--text-dim); }
+  footer.site a:hover { color: var(--text); }
+
+  @media (prefers-reduced-motion: reduce) {
+    .placeholder .caret::after { animation: none; }
+    html { scroll-behavior: auto; }
+  }
+
+  button:focus-visible, textarea:focus-visible, a:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+</style>
+</head>
+<body>
+
+<header class="site">
+  <div class="wrap">
+    <div class="wordmark">audit<span class="dot">line</span> <small>// client-side log triage</small></div>
+    <nav class="site-nav">
+      <a href="#catches">what it catches</a>
+      <a href="#pipeline">how it works</a>
+    </nav>
+  </div>
+</header>
+
+<section class="hero">
+  <div class="wrap">
+    <div class="hero-intro">
+      <h1>Paste a log. Watch the threats surface.</h1>
+      <p>auditline gives full structured analysis to SSH auth logs and web access logs, and falls back to generic pattern scanning for anything else — so any line-based log gets at least an IP, injection, and known-attack-tool sweep.</p>
+      <span class="privacy-note"><span class="led"></span>runs entirely in your browser — nothing is uploaded</span>
+    </div>
+
+    <div class="console">
+      <div class="pane">
+        <div class="pane-bar">
+          <span class="label">input.log</span>
+          <span class="line-count" id="lineCount"></span>
+        </div>
+        <div class="toolbar">
+          <button id="uploadBtn" type="button" class="ghost-btn">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12m0-12 4 4m-4-4-4 4"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>
+            upload file
+          </button>
+          <span class="toolbar-divider"></span>
+          <button id="sampleAuth" type="button" class="ghost-btn">load ssh sample</button>
+          <button id="sampleAccess" type="button" class="ghost-btn">load web sample</button>
+          <button id="clearBtn" type="button" class="ghost-btn ghost-btn-quiet">clear</button>
+        </div>
+        <input type="file" id="fileInput" accept=".log,.txt,text/plain" hidden>
+        <div class="textarea-wrap" id="dropZone">
+          <textarea id="logInput" placeholder="Paste raw SSH auth log or web server access log lines here, or drop a .log/.txt file...&#10;&#10;e.g.&#10;Sep 14 03:21:00 server sshd[1010]: Failed password for root from 192.168.1.5 port 51514 ssh2"></textarea>
+          <div class="drop-overlay" id="dropOverlay">
+            <span>drop log file to load</span>
+          </div>
+        </div>
+        <div id="formatHint" class="format-hint" hidden>
+          Doesn't match the SSH auth log or Combined Log Format patterns, so auditline will fall back to generic line-by-line scanning.
+        </div>
+        <div class="input-footer">
+          <span class="type-badge">detected: <b id="typeBadge">—</b></span>
+          <span class="kbd-hint">⌘/Ctrl + Enter</span>
+          <button id="analyzeBtn" type="button" disabled>Analyze</button>
+        </div>
+      </div>
+      <div class="pane">
+        <div class="pane-bar">
+          <span class="label">findings</span>
+          <div class="traffic"><span></span><span></span><span></span></div>
+        </div>
+        <div id="output">
+          <div class="placeholder">
+            <span>Waiting for input<span class="caret"></span></span>
+          </div>
+        </div>
+        <div class="output-footer" id="outputFooter" hidden>
+          <span id="resultMeta"></span>
+          <button id="downloadBtn" type="button" class="ghost-btn">download findings (.json)</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="section" id="catches">
+  <div class="wrap">
+    <div class="section-head">
+      <h2>Two structured parsers, plus a fallback for everything else</h2>
+      <p>SSH auth logs and web access logs get full structured analysis. Anything else — firewall logs, application logs, systemd journals, custom formats — still gets scanned line-by-line for the patterns below, just without the format-specific context (no "which field is the username" type reasoning).</p>
+    </div>
+    <div class="catches-grid">
+      <div class="catch-card">
+        <div class="ctitle"><span class="swatch" style="background:var(--high)"></span>Brute force <span class="tier-tag">auth</span></div>
+        <div class="cdesc">One IP racking up repeated failed logins against SSH.</div>
+        <div class="cexample">Failed password for root
+from 192.168.1.5 ×7</div>
+      </div>
+      <div class="catch-card">
+        <div class="ctitle"><span class="swatch" style="background:var(--high)"></span>Post-failure success <span class="tier-tag">auth</span></div>
+        <div class="cdesc">A run of failed logins immediately followed by a success — likely a cracked password.</div>
+        <div class="cexample">7 failed → Accepted password
+for root from 192.168.1.5</div>
+      </div>
+      <div class="catch-card">
+        <div class="ctitle"><span class="swatch" style="background:var(--medium)"></span>Username enumeration <span class="tier-tag">auth</span></div>
+        <div class="cdesc">One source probing many non-existent accounts.</div>
+        <div class="cexample">Invalid user admin, test,
+oracle, postgres, ubuntu...</div>
+      </div>
+      <div class="catch-card">
+        <div class="ctitle"><span class="swatch" style="background:var(--high)"></span>SQL injection <span class="tier-tag">access + generic</span></div>
+        <div class="cdesc">Query strings — or any line — carrying classic SQLi payloads.</div>
+        <div class="cexample">/index.php?id=1' OR '1'='1</div>
+      </div>
+      <div class="catch-card">
+        <div class="ctitle"><span class="swatch" style="background:var(--high)"></span>Cross-site scripting <span class="tier-tag">access + generic</span></div>
+        <div class="cdesc">Script tags or event-handler payloads, anywhere in the line.</div>
+        <div class="cexample">/search?q=&lt;script&gt;alert(1)&lt;/script&gt;</div>
+      </div>
+      <div class="catch-card">
+        <div class="ctitle"><span class="swatch" style="background:var(--medium)"></span>Path traversal <span class="tier-tag">access + generic</span></div>
+        <div class="cdesc">Attempts to climb out of a web root or file tree.</div>
+        <div class="cexample">GET /../../etc/passwd</div>
+      </div>
+      <div class="catch-card">
+        <div class="ctitle"><span class="swatch" style="background:var(--medium)"></span>Automated scanning <span class="tier-tag">access</span></div>
+        <div class="cdesc">A burst of 404/403 responses to one IP, or a known scanner user-agent.</div>
+        <div class="cexample">11 × 404 from one IP
+UA: sqlmap/1.7</div>
+      </div>
+      <div class="catch-card">
+        <div class="ctitle"><span class="swatch" style="background:var(--high)"></span>Attack tool mentions <span class="tier-tag">generic</span></div>
+        <div class="cdesc">Any line referencing sqlmap, nikto, hydra, metasploit, and similar tools.</div>
+        <div class="cexample">blocked request from
+hydra scan attempt</div>
+      </div>
+      <div class="catch-card">
+        <div class="ctitle"><span class="swatch" style="background:var(--medium)"></span>Repeated failure language <span class="tier-tag">generic</span></div>
+        <div class="cdesc">Lines with "access denied", "unauthorized", "auth failure", etc., clustered by IP if one is present.</div>
+        <div class="cexample">10.0.0.4: permission denied ×6</div>
+      </div>
+      <div class="catch-card">
+        <div class="ctitle"><span class="swatch" style="background:var(--medium)"></span>High-volume source <span class="tier-tag">generic</span></div>
+        <div class="cdesc">One IP responsible for an outsized share of all lines with an address in them.</div>
+        <div class="cexample">203.0.113.5: 40% of all
+IP-bearing lines</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="section" id="pipeline">
+  <div class="wrap">
+    <div class="section-head">
+      <h2>How a log line becomes a finding</h2>
+      <p>The same three-stage pipeline as the Python CLI it's built on, reimplemented in JavaScript so it runs without a server.</p>
+    </div>
+    <div class="pipeline">
+      <div class="pipe-step">
+        <div class="pnum"></div>
+        <h3>Parse</h3>
+        <p>Each line is matched against a format-specific pattern and turned into a structured event — timestamp, source IP, user or path, status.</p>
+      </div>
+      <div class="pipe-step">
+        <div class="pnum"></div>
+        <h3>Detect</h3>
+        <p>Independent rule functions scan the parsed events for known attack signatures and score each hit by severity.</p>
+      </div>
+      <div class="pipe-step">
+        <div class="pnum"></div>
+        <h3>Report</h3>
+        <p>Findings are sorted high to low severity with supporting evidence, ready to hand to an incident writeup.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<footer class="site">
+  <div class="wrap" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:14px; width:100%;">
+    <span>auditline — a client-side reimplementation of the <a href="#" id="footerNote">auditline Python CLI</a>.</span>
+    <span>built for portfolio &amp; SOC-analyst practice</span>
+  </div>
+</footer>
+
+<script>
+(function () {
+  "use strict";
+
+  // ---------------------------------------------------------------------
+  // Sample data
+  // ---------------------------------------------------------------------
+
+  const SAMPLE_AUTH = `Sep 14 03:20:01 server sshd[1001]: Invalid user admin from 45.33.12.9 port 44011
+Sep 14 03:20:03 server sshd[1002]: Invalid user test from 45.33.12.9 port 44012
+Sep 14 03:20:05 server sshd[1003]: Invalid user oracle from 45.33.12.9 port 44013
+Sep 14 03:20:07 server sshd[1004]: Invalid user postgres from 45.33.12.9 port 44014
+Sep 14 03:20:09 server sshd[1005]: Invalid user ubuntu from 45.33.12.9 port 44015
+Sep 14 03:20:11 server sshd[1006]: Invalid user git from 45.33.12.9 port 44016
+Sep 14 03:21:00 server sshd[1010]: Failed password for root from 192.168.1.5 port 51514 ssh2
+Sep 14 03:21:05 server sshd[1011]: Failed password for root from 192.168.1.5 port 51515 ssh2
+Sep 14 03:21:10 server sshd[1012]: Failed password for root from 192.168.1.5 port 51516 ssh2
+Sep 14 03:21:15 server sshd[1013]: Failed password for root from 192.168.1.5 port 51517 ssh2
+Sep 14 03:21:20 server sshd[1014]: Failed password for root from 192.168.1.5 port 51518 ssh2
+Sep 14 03:21:25 server sshd[1015]: Failed password for root from 192.168.1.5 port 51519 ssh2
+Sep 14 03:21:30 server sshd[1016]: Failed password for admin from 192.168.1.5 port 51520 ssh2
+Sep 14 03:21:35 server sshd[1017]: Accepted password for root from 192.168.1.5 port 51521 ssh2
+Sep 14 03:25:00 server sshd[1020]: Failed password for gautam from 10.0.0.20 port 52000 ssh2
+Sep 14 03:25:30 server sshd[1021]: Accepted password for gautam from 10.0.0.20 port 52001 ssh2
+Sep 14 03:30:00 server sshd[1030]: Failed password for invalid user backup from 198.51.100.7 port 33000 ssh2
+Sep 14 03:30:05 server sshd[1031]: Failed password for invalid user backup from 198.51.100.7 port 33001 ssh2`;
+
+  const SAMPLE_ACCESS = `203.0.113.5 - - [14/Sep/2026:10:12:33 +0000] "GET /index.php?id=1' OR '1'='1 HTTP/1.1" 200 512 "-" "sqlmap/1.7"
+203.0.113.5 - - [14/Sep/2026:10:12:34 +0000] "GET /admin/login.php?user=admin' UNION SELECT null,null-- HTTP/1.1" 200 480 "-" "sqlmap/1.7"
+198.51.100.20 - - [14/Sep/2026:10:15:01 +0000] "GET /search?q=<script>alert(1)<\/script> HTTP/1.1" 200 300 "-" "Mozilla/5.0"
+198.51.100.20 - - [14/Sep/2026:10:15:05 +0000] "GET /comment?msg=<img src=x onerror=alert(1)> HTTP/1.1" 200 305 "-" "Mozilla/5.0"
+192.0.2.15 - - [14/Sep/2026:10:20:00 +0000] "GET /../../etc/passwd HTTP/1.1" 404 0 "-" "curl/7.68.0"
+192.0.2.15 - - [14/Sep/2026:10:20:01 +0000] "GET /wp-admin/ HTTP/1.1" 404 0 "-" "curl/7.68.0"
+192.0.2.15 - - [14/Sep/2026:10:20:02 +0000] "GET /wp-login.php HTTP/1.1" 404 0 "-" "curl/7.68.0"
+192.0.2.15 - - [14/Sep/2026:10:20:03 +0000] "GET /phpmyadmin/ HTTP/1.1" 404 0 "-" "curl/7.68.0"
+192.0.2.15 - - [14/Sep/2026:10:20:04 +0000] "GET /.env HTTP/1.1" 404 0 "-" "curl/7.68.0"
+192.0.2.15 - - [14/Sep/2026:10:20:05 +0000] "GET /backup.sql HTTP/1.1" 404 0 "-" "curl/7.68.0"
+192.0.2.15 - - [14/Sep/2026:10:20:06 +0000] "GET /config.php.bak HTTP/1.1" 404 0 "-" "curl/7.68.0"
+192.0.2.15 - - [14/Sep/2026:10:20:07 +0000] "GET /.git/config HTTP/1.1" 404 0 "-" "curl/7.68.0"
+192.0.2.15 - - [14/Sep/2026:10:20:08 +0000] "GET /server-status HTTP/1.1" 403 0 "-" "curl/7.68.0"
+192.0.2.15 - - [14/Sep/2026:10:20:09 +0000] "GET /console HTTP/1.1" 403 0 "-" "curl/7.68.0"
+192.0.2.15 - - [14/Sep/2026:10:20:10 +0000] "GET /actuator/env HTTP/1.1" 404 0 "-" "curl/7.68.0"
+203.0.113.99 - - [14/Sep/2026:10:30:00 +0000] "GET /index.html HTTP/1.1" 200 1024 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
+203.0.113.99 - - [14/Sep/2026:10:30:05 +0000] "GET /about.html HTTP/1.1" 200 800 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"`;
+
+  // ---------------------------------------------------------------------
+  // Parsers
+  // ---------------------------------------------------------------------
+
+  const AUTH_LINE_RE = /^\w{3}\s+\d{1,2}\s+\d{2}:\d{2}:\d{2}\s+\S+\s+sshd\[\d+\]:\s+(.+)$/;
+  const FAILED_PW_RE = /Failed password for (?:invalid user )?(\S+) from ([\d.]+) port (\d+)/;
+  const ACCEPTED_PW_RE = /Accepted password for (\S+) from ([\d.]+) port (\d+)/;
+  const INVALID_USER_RE = /^Invalid user (\S+) from ([\d.]+) port (\d+)/;
+
+  function parseAuthLog(text) {
+    const events = [];
+    let seq = 0;
+    for (const raw of text.split("\n")) {
+      const line = raw.trim();
+      if (!line) continue;
+      const m = AUTH_LINE_RE.exec(line);
+      if (!m) continue;
+      const message = m[1];
+
+      let fm = FAILED_PW_RE.exec(message);
+      if (fm) {
+        events.push({ order: seq++, ip: fm[2], user: fm[1], eventType: "failed_login", raw: line });
+        continue;
+      }
+      let am = ACCEPTED_PW_RE.exec(message);
+      if (am) {
+        events.push({ order: seq++, ip: am[2], user: am[1], eventType: "accepted_login", raw: line });
+        continue;
+      }
+      let im = INVALID_USER_RE.exec(message);
+      if (im) {
+        events.push({ order: seq++, ip: im[2], user: im[1], eventType: "invalid_user", raw: line });
+        continue;
+      }
+    }
+    return events;
+  }
+
+  const ACCESS_LINE_RE = /^([\d.]+)\s+\S+\s+\S+\s+\[([^\]]+)\]\s+"(\S+)\s+(\S+)\s+([^"]+)"\s+(\d{3})\s+(\S+)(?:\s+"([^"]*)"\s+"([^"]*)")?/;
+
+  function parseAccessLog(text) {
+    const events = [];
+    let seq = 0;
+    for (const raw of text.split("\n")) {
+      const line = raw.trim();
+      if (!line) continue;
+      const m = ACCESS_LINE_RE.exec(line);
+      if (!m) continue;
+      events.push({
+        order: seq++,
+        ip: m[1],
+        method: m[3],
+        path: m[4],
+        status: parseInt(m[6], 10),
+        userAgent: m[9] || "",
+        raw: line,
+      });
+    }
+    return events;
+  }
+
+  // ---------------------------------------------------------------------
+  // Generic fallback parser — for anything that isn't SSH auth or
+  // Combined Log Format. Makes no assumptions about structure beyond
+  // "one event per line"; pulls out an IP if one is present so the
+  // generic detectors below can still group activity by source.
+  // ---------------------------------------------------------------------
+
+  const IP_ANYWHERE_RE = /\b(?:\d{1,3}\.){3}\d{1,3}\b/;
+
+  function parseGenericLog(text) {
+    const events = [];
+    let seq = 0;
+    for (const raw of text.split("\n")) {
+      const line = raw.trim();
+      if (!line) continue;
+      const ipMatch = IP_ANYWHERE_RE.exec(line);
+      events.push({
+        order: seq++,
+        ip: ipMatch ? ipMatch[0] : null,
+        raw: line,
+      });
+    }
+    return events;
+  }
+
+  function detectLogType(text) {
+    const lines = text.split("\n").slice(0, 20);
+    for (const line of lines) {
+      if (!line.trim()) continue;
+      if (line.includes("sshd[")) return "auth";
+      if (/"(GET|POST|PUT|DELETE)\s/.test(line)) return "access";
+    }
+    // No recognized structured format — fall back to generic scanning
+    // rather than refusing to analyze at all.
+    return text.trim() ? "generic" : null;
+  }
+
+  // ---------------------------------------------------------------------
+  // Detectors
+  // ---------------------------------------------------------------------
+
+  function detectBruteForce(events, threshold = 5) {
+    const findings = [];
+    const byIp = {};
+    events.filter(e => e.eventType === "failed_login").forEach(e => {
+      (byIp[e.ip] = byIp[e.ip] || []).push(e);
+    });
+    for (const ip in byIp) {
+      const attempts = byIp[ip];
+      if (attempts.length >= threshold) {
+        const users = [...new Set(attempts.map(a => a.user))].sort();
+        findings.push({
+          severity: attempts.length >= threshold * 2 ? "high" : "medium",
+          category: "Brute Force Attempt",
+          description: `${ip} made ${attempts.length} failed login attempts trying ${users.length} distinct username(s): ${users.slice(0, 5).join(", ")}${users.length > 5 ? " ..." : ""}`,
+          evidence: attempts.slice(0, 10).map(a => a.raw),
+        });
+      }
+    }
+    return findings;
+  }
+
+  function detectPostFailureSuccess(events, minFailures = 3) {
+    const findings = [];
+    const byIp = {};
+    events.filter(e => e.eventType === "failed_login" || e.eventType === "accepted_login").forEach(e => {
+      (byIp[e.ip] = byIp[e.ip] || []).push(e);
+    });
+    for (const ip in byIp) {
+      const seq = byIp[ip].slice().sort((a, b) => a.order - b.order);
+      let streak = 0;
+      for (const e of seq) {
+        if (e.eventType === "failed_login") {
+          streak++;
+        } else if (e.eventType === "accepted_login" && streak >= minFailures) {
+          findings.push({
+            severity: "high",
+            category: "Possible Compromised Account",
+            description: `${ip} failed to log in ${streak} times as user '${e.user}' then succeeded — likely successful brute-force.`,
+            evidence: [e.raw],
+          });
+          streak = 0;
+        } else {
+          streak = 0;
+        }
+      }
+    }
+    return findings;
+  }
+
+  function detectInvalidUserScanning(events, threshold = 5) {
+    const findings = [];
+    const byIp = {};
+    events.filter(e => e.eventType === "invalid_user").forEach(e => {
+      (byIp[e.ip] = byIp[e.ip] || new Set()).add(e.user);
+    });
+    for (const ip in byIp) {
+      const users = byIp[ip];
+      if (users.size >= threshold) {
+        findings.push({
+          severity: "medium",
+          category: "Username Enumeration",
+          description: `${ip} tried ${users.size} different invalid usernames, suggesting automated account scanning.`,
+          evidence: [...users].sort().slice(0, 10),
+        });
+      }
+    }
+    return findings;
+  }
+
+  const SQLI_RE = /(%27)|(')|(--)|(%23)|(#)|union\s+select|or\s+1=1|drop\s+table|select\s+.*\s+from/i;
+  const XSS_RE = /<script|javascript:|onerror\s*=|onload\s*=|<img[^>]+src/i;
+  const TRAVERSAL_RE = /\.\.\/|\.\.\\|%2e%2e%2f/i;
+
+  function detectInjection(events) {
+    const findings = [];
+    const sqli = [], xss = [], trav = [];
+    for (const e of events) {
+      const path = e.path || "";
+      if (SQLI_RE.test(path)) sqli.push(e);
+      else if (XSS_RE.test(path)) xss.push(e);
+      else if (TRAVERSAL_RE.test(path)) trav.push(e);
+    }
+    if (sqli.length) {
+      findings.push({
+        severity: "high",
+        category: "SQL Injection Attempt",
+        description: `${sqli.length} request(s) contained SQL injection patterns.`,
+        evidence: sqli.slice(0, 10).map(e => `${e.ip} -> ${e.path}`),
+      });
+    }
+    if (xss.length) {
+      findings.push({
+        severity: "high",
+        category: "Cross-Site Scripting (XSS) Attempt",
+        description: `${xss.length} request(s) contained XSS payload patterns.`,
+        evidence: xss.slice(0, 10).map(e => `${e.ip} -> ${e.path}`),
+      });
+    }
+    if (trav.length) {
+      findings.push({
+        severity: "medium",
+        category: "Path Traversal Attempt",
+        description: `${trav.length} request(s) attempted directory traversal.`,
+        evidence: trav.slice(0, 10).map(e => `${e.ip} -> ${e.path}`),
+      });
+    }
+    return findings;
+  }
+
+  function detectHighErrorRate(events, threshold = 10) {
+    const findings = [];
+    const byIp = {};
+    events.filter(e => e.status >= 400 && e.status < 500).forEach(e => {
+      (byIp[e.ip] = byIp[e.ip] || []).push(e);
+    });
+    for (const ip in byIp) {
+      const errs = byIp[ip];
+      if (errs.length >= threshold) {
+        const counts = {};
+        errs.forEach(e => { counts[e.status] = (counts[e.status] || 0) + 1; });
+        const countsStr = Object.entries(counts).map(([k, v]) => `${k}: ${v}`).join(", ");
+        findings.push({
+          severity: "medium",
+          category: "Automated Scanning / Enumeration",
+          description: `${ip} triggered ${errs.length} client-error responses (${countsStr}), consistent with directory or vulnerability scanning.`,
+          evidence: errs.slice(0, 10).map(e => e.path),
+        });
+      }
+    }
+    return findings;
+  }
+
+  function detectSuspiciousUserAgents(events) {
+    const tools = ["sqlmap", "nikto", "nmap", "acunetix", "nessus", "masscan", "wpscan", "curl", "python-requests"];
+    const findings = [];
+    const hits = {};
+    for (const e of events) {
+      const ua = (e.userAgent || "").toLowerCase();
+      for (const tool of tools) {
+        if (ua.includes(tool)) {
+          (hits[tool] = hits[tool] || []).push(e);
+          break;
+        }
+      }
+    }
+    for (const tool in hits) {
+      const evs = hits[tool];
+      const ips = [...new Set(evs.map(e => e.ip))].sort();
+      findings.push({
+        severity: (tool === "curl" || tool === "python-requests") ? "medium" : "high",
+        category: "Known Scanning Tool Detected",
+        description: `${evs.length} request(s) used a user-agent identifying as '${tool}', commonly associated with automated scanning.`,
+        evidence: ips.slice(0, 10),
+      });
+    }
+    return findings;
+  }
+
+  function runAuthDetectors(events) {
+    return [
+      ...detectBruteForce(events),
+      ...detectPostFailureSuccess(events),
+      ...detectInvalidUserScanning(events),
+    ];
+  }
+
+  function runAccessDetectors(events) {
+    return [
+      ...detectInjection(events),
+      ...detectHighErrorRate(events),
+      ...detectSuspiciousUserAgents(events),
+    ];
+  }
+
+  // ---------------------------------------------------------------------
+  // Generic detectors — line-by-line pattern matching for log formats
+  // auditline doesn't have a dedicated parser for. Lower precision than
+  // the structured detectors above (no notion of "failed login" vs.
+  // "successful login", just text patterns), but still surfaces real
+  // signal: injection payloads, known attack-tool fingerprints, and
+  // repeated failure/error language clustered by source IP.
+  // ---------------------------------------------------------------------
+
+  const GENERIC_FAILURE_RE = /\b(failed login|login failed|authentication failure|auth failure|invalid password|incorrect password|access denied|permission denied|unauthorized|denied|forbidden)\b/i;
+  const GENERIC_ERROR_RE = /\b(error|critical|fatal|exception|panic|failure)\b/i;
+  const GENERIC_TOOLS = ["sqlmap", "nikto", "nmap", "acunetix", "nessus", "masscan", "wpscan", "hydra", "metasploit", "burpsuite", "python-requests"];
+
+  function detectGenericInjection(events) {
+    const findings = [];
+    const sqli = [], xss = [], trav = [];
+    for (const e of events) {
+      if (SQLI_RE.test(e.raw)) sqli.push(e);
+      else if (XSS_RE.test(e.raw)) xss.push(e);
+      else if (TRAVERSAL_RE.test(e.raw)) trav.push(e);
+    }
+    if (sqli.length) {
+      findings.push({
+        severity: "high",
+        category: "SQL Injection Pattern",
+        description: `${sqli.length} line(s) contained text matching SQL injection patterns.`,
+        evidence: sqli.slice(0, 10).map(e => e.raw),
+      });
+    }
+    if (xss.length) {
+      findings.push({
+        severity: "high",
+        category: "Cross-Site Scripting (XSS) Pattern",
+        description: `${xss.length} line(s) contained text matching XSS payload patterns.`,
+        evidence: xss.slice(0, 10).map(e => e.raw),
+      });
+    }
+    if (trav.length) {
+      findings.push({
+        severity: "medium",
+        category: "Path Traversal Pattern",
+        description: `${trav.length} line(s) contained directory traversal sequences.`,
+        evidence: trav.slice(0, 10).map(e => e.raw),
+      });
+    }
+    return findings;
+  }
+
+  function detectGenericFailureClusters(events, threshold = 5) {
+    const findings = [];
+    const byIp = {};
+    const unattributed = [];
+    for (const e of events) {
+      if (!GENERIC_FAILURE_RE.test(e.raw)) continue;
+      if (e.ip) (byIp[e.ip] = byIp[e.ip] || []).push(e);
+      else unattributed.push(e);
+    }
+    for (const ip in byIp) {
+      const hits = byIp[ip];
+      if (hits.length >= threshold) {
+        findings.push({
+          severity: hits.length >= threshold * 2 ? "high" : "medium",
+          category: "Repeated Failure/Denied Events",
+          description: `${ip} appears in ${hits.length} line(s) containing failure or access-denied language — worth checking for brute-force or probing behavior.`,
+          evidence: hits.slice(0, 10).map(e => e.raw),
+        });
+      }
+    }
+    if (unattributed.length >= threshold) {
+      findings.push({
+        severity: "low",
+        category: "Repeated Failure/Denied Events (no source IP found)",
+        description: `${unattributed.length} line(s) contained failure or access-denied language but no IP address to group by.`,
+        evidence: unattributed.slice(0, 10).map(e => e.raw),
+      });
+    }
+    return findings;
+  }
+
+  function detectGenericToolMentions(events) {
+    const findings = [];
+    const hits = {};
+    for (const e of events) {
+      const lower = e.raw.toLowerCase();
+      for (const tool of GENERIC_TOOLS) {
+        if (lower.includes(tool)) {
+          (hits[tool] = hits[tool] || []).push(e);
+          break;
+        }
+      }
+    }
+    for (const tool in hits) {
+      const evs = hits[tool];
+      findings.push({
+        severity: "high",
+        category: "Known Attack Tool Mentioned",
+        description: `${evs.length} line(s) reference '${tool}', a tool commonly used for scanning or exploitation.`,
+        evidence: evs.slice(0, 10).map(e => e.raw),
+      });
+    }
+    return findings;
+  }
+
+  function detectGenericHighVolumeSource(events, minEvents = 15, minShare = 0.4) {
+    const findings = [];
+    const byIp = {};
+    let withIp = 0;
+    for (const e of events) {
+      if (!e.ip) continue;
+      withIp++;
+      (byIp[e.ip] = byIp[e.ip] || []).push(e);
+    }
+    if (!withIp) return findings;
+    for (const ip in byIp) {
+      const count = byIp[ip].length;
+      if (count >= minEvents && count / withIp >= minShare) {
+        findings.push({
+          severity: "medium",
+          category: "High-Volume Source",
+          description: `${ip} accounts for ${count} of ${withIp} lines with an IP address (${Math.round((count / withIp) * 100)}%) — unusually concentrated for a single source.`,
+          evidence: byIp[ip].slice(0, 5).map(e => e.raw),
+        });
+      }
+    }
+    return findings;
+  }
+
+  function runGenericDetectors(events) {
+    return [
+      ...detectGenericInjection(events),
+      ...detectGenericFailureClusters(events),
+      ...detectGenericToolMentions(events),
+      ...detectGenericHighVolumeSource(events),
+    ];
+  }
+
+  const SEV_ORDER = { high: 0, medium: 1, low: 2 };
+
+  // ---------------------------------------------------------------------
+  // UI wiring
+  // ---------------------------------------------------------------------
+
+  const $input = document.getElementById("logInput");
+  const $analyze = document.getElementById("analyzeBtn");
+  const $output = document.getElementById("output");
+  const $typeBadge = document.getElementById("typeBadge");
+  const $lineCount = document.getElementById("lineCount");
+  const $formatHint = document.getElementById("formatHint");
+  const $dropZone = document.getElementById("dropZone");
+  const $fileInput = document.getElementById("fileInput");
+  const $outputFooter = document.getElementById("outputFooter");
+  const $resultMeta = document.getElementById("resultMeta");
+  const $downloadBtn = document.getElementById("downloadBtn");
+
+  let lastFindings = null;
+  let lastType = null;
+  let debounceTimer = null;
+
+  function escapeHtml(str) {
+    return String(str)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;");
+  }
+
+  function showToast(message) {
+    let $t = document.querySelector(".toast");
+    if (!$t) {
+      $t = document.createElement("div");
+      $t.className = "toast";
+      document.body.appendChild($t);
+    }
+    $t.textContent = message;
+    requestAnimationFrame(() => $t.classList.add("show"));
+    clearTimeout($t._hideTimer);
+    $t._hideTimer = setTimeout(() => $t.classList.remove("show"), 2200);
+  }
+
+  function countNonEmptyLines(text) {
+    return text.split("\n").filter(l => l.trim().length > 0).length;
+  }
+
+  function updateTypeBadge() {
+    const text = $input.value;
+    const lines = countNonEmptyLines(text);
+    $lineCount.textContent = lines ? `${lines} line${lines === 1 ? "" : "s"}` : "";
+
+    if (!text.trim()) {
+      $typeBadge.textContent = "—";
+      $analyze.disabled = true;
+      $formatHint.hidden = true;
+      return null;
+    }
+    const type = detectLogType(text);
+    const labels = { auth: "ssh auth log", access: "web access log", generic: "unstructured (generic scan)" };
+    $typeBadge.textContent = labels[type] || "unrecognized";
+    $analyze.disabled = false;
+    if (type === "generic") {
+      $formatHint.hidden = false;
+      $formatHint.textContent = "Doesn't match the SSH auth log or Combined Log Format patterns, so auditline is falling back to generic line-by-line scanning — it'll still catch IPs, injection payloads, known attack tools, and repeated failure language, just with less precision than the structured parsers.";
+    } else {
+      $formatHint.hidden = true;
+    }
+    return type;
+  }
+
+  function evidenceBlock(evidence) {
+    if (!evidence || !evidence.length) return "";
+    const visible = evidence.slice(0, 3);
+    const rest = evidence.slice(3);
+    let html = `<div class="fevidence">${visible.map(ev => `<div>${escapeHtml(ev)}</div>`).join("")}`;
+    if (rest.length) {
+      const restId = "ev" + Math.random().toString(36).slice(2, 9);
+      html += `<div id="${restId}" hidden>${rest.map(ev => `<div>${escapeHtml(ev)}</div>`).join("")}</div>`;
+    }
+    html += `</div>`;
+    if (rest.length) {
+      const restId2 = html.match(/id="(ev\w+)"/)[1];
+      html += `<button type="button" class="evidence-toggle" data-target="${restId2}">show ${rest.length} more</button>`;
+    }
+    return html;
+  }
+
+  function renderOutput(findings, eventCount, type) {
+    lastFindings = findings;
+    lastType = type;
+
+    if (!eventCount) {
+      $output.innerHTML = `<div class="placeholder"><span>No parseable log lines found in this input<span class="caret"></span></span></div>`;
+      $outputFooter.hidden = true;
+      return;
+    }
+
+    const sorted = findings.slice().sort((a, b) => SEV_ORDER[a.severity] - SEV_ORDER[b.severity]);
+    const high = sorted.filter(f => f.severity === "high").length;
+    const medium = sorted.filter(f => f.severity === "medium").length;
+    const low = sorted.filter(f => f.severity === "low").length;
+
+    let html = `<div class="summary-row">
+      <div class="sum-chip high">${high}<small>high</small></div>
+      <div class="sum-chip medium">${medium}<small>medium</small></div>
+      <div class="sum-chip low">${low}<small>low</small></div>
+    </div>`;
+
+    if (!sorted.length) {
+      html += `<div class="clean-msg">✓ ${eventCount} events parsed — no suspicious activity detected.</div>`;
+    } else {
+      sorted.forEach(f => {
+        html += `<div class="finding sev-${f.severity}">
+          <div class="fhead">
+            <span class="sev-tag ${f.severity}">${f.severity}</span>
+            <span class="fcat">${escapeHtml(f.category)}</span>
+          </div>
+          <p class="fdesc">${escapeHtml(f.description)}</p>
+          ${evidenceBlock(f.evidence)}
+        </div>`;
+      });
+    }
+
+    $output.innerHTML = html;
+    $output.querySelectorAll(".evidence-toggle").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const target = document.getElementById(btn.dataset.target);
+        target.hidden = !target.hidden;
+        const remaining = target.querySelectorAll("div").length;
+        btn.textContent = target.hidden ? `show ${remaining} more` : "show less";
+      });
+    });
+
+    $resultMeta.textContent = `${eventCount} events · ${sorted.length} finding${sorted.length === 1 ? "" : "s"}`;
+    $outputFooter.hidden = false;
+  }
+
+  function runAnalysis() {
+    const text = $input.value;
+    const type = detectLogType(text);
+    if (!type) return;
+
+    let events, findings;
+    if (type === "auth") {
+      events = parseAuthLog(text);
+      findings = runAuthDetectors(events);
+    } else if (type === "access") {
+      events = parseAccessLog(text);
+      findings = runAccessDetectors(events);
+    } else {
+      events = parseGenericLog(text);
+      findings = runGenericDetectors(events);
+    }
+    renderOutput(findings, events.length, type);
+  }
+
+  function loadText(text, { toast } = {}) {
+    $input.value = text;
+    updateTypeBadge();
+    runAnalysis();
+    if (toast) showToast(toast);
+  }
+
+  function handleFile(file) {
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => loadText(String(reader.result), { toast: `Loaded ${file.name}` });
+    reader.onerror = () => showToast("Couldn't read that file");
+    reader.readAsText(file);
+  }
+
+  // Typing: live-update the badge immediately, auto-analyze after a short pause
+  $input.addEventListener("input", () => {
+    const type = updateTypeBadge();
+    clearTimeout(debounceTimer);
+    if (type) {
+      debounceTimer = setTimeout(runAnalysis, 450);
+    } else if (!$input.value.trim()) {
+      $output.innerHTML = `<div class="placeholder"><span>Waiting for input<span class="caret"></span></span></div>`;
+      $outputFooter.hidden = true;
+    }
+  });
+
+  $input.addEventListener("keydown", (e) => {
+    if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+      e.preventDefault();
+      clearTimeout(debounceTimer);
+      runAnalysis();
+    }
+  });
+
+  $analyze.addEventListener("click", runAnalysis);
+
+  document.getElementById("clearBtn").addEventListener("click", () => {
+    $input.value = "";
+    updateTypeBadge();
+    $output.innerHTML = `<div class="placeholder"><span>Waiting for input<span class="caret"></span></span></div>`;
+    $outputFooter.hidden = true;
+    $input.focus();
+  });
+
+  document.getElementById("sampleAuth").addEventListener("click", () => {
+    loadText(SAMPLE_AUTH, { toast: "Loaded SSH auth sample" });
+  });
+  document.getElementById("sampleAccess").addEventListener("click", () => {
+    loadText(SAMPLE_ACCESS, { toast: "Loaded web access sample" });
+  });
+
+  // File upload via button
+  document.getElementById("uploadBtn").addEventListener("click", () => $fileInput.click());
+  $fileInput.addEventListener("change", (e) => {
+    handleFile(e.target.files[0]);
+    $fileInput.value = "";
+  });
+
+  // Drag and drop
+  ["dragenter", "dragover"].forEach(evt => {
+    $dropZone.addEventListener(evt, (e) => {
+      e.preventDefault();
+      $dropZone.classList.add("dragover");
+    });
+  });
+  ["dragleave", "drop"].forEach(evt => {
+    $dropZone.addEventListener(evt, (e) => {
+      e.preventDefault();
+      if (evt === "dragleave" && e.target !== $dropZone) return;
+      $dropZone.classList.remove("dragover");
+    });
+  });
+  $dropZone.addEventListener("drop", (e) => {
+    e.preventDefault();
+    const file = e.dataTransfer.files && e.dataTransfer.files[0];
+    if (file) handleFile(file);
+  });
+
+  // Download findings as JSON
+  $downloadBtn.addEventListener("click", () => {
+    if (!lastFindings) return;
+    const payload = {
+      generated_at: new Date().toISOString(),
+      log_type: lastType,
+      findings: lastFindings,
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "auditline-findings.json";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  });
+
+  document.getElementById("footerNote").addEventListener("click", (e) => e.preventDefault());
+})();
+</script>
+
+</body>
+</html>
